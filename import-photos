@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# USE:
+#     find $sourceDirectory -type f -print0 | xargs -0 -L25 -P4 ~/import-photos
+#
+# DEPENDENCIES:
+#     sha2 to calculate file digests
+#     exif to get date and time stamp from images
+#     ffmpeg to get date and time stamp from movies
+
+REPOS=~/all-pictures
+
+SHA2=$(which sha2)
+if [ -z "$SHA2" ] ; then
+    echo >&2 "cannot find sha2"
+    exit 1
+fi
+
+EXIF=$(which exif)
+if [ -z "$EXIF" ] ; then
+    echo >&2 "cannot find exif"
+    exit 1
+fi
+
+FFMPEG=$(which ffmpeg)
+if [ -z "$FFMPEG" ] ; then
+    echo >&2 "cannot find ffmpeg"
+    exit 1
+fi
+
+for src ; do
+    if [ ! -r "$src" -o ! -s "$src" ] ; then
+        echo >&2 "cannot find file: $src"
+        continue
+    fi
+
+    digest=$($SHA2 -q -256 "$src")
+    if [ -z "$digest" ] ; then
+        echo >&2 "empty file digest: $src"
+        exit 1
+    fi
+
+    extension="${src##*.}"
+
+    if [ "$extension" == "jpg" ] ; then
+        datetime=$($EXIF -m -t DateTimeOriginal "$src")
+        if [ $? -ne 0 -o -z "$datetime" ] ; then
+            datetime=$($EXIF -m -t DateTime "$src")
+            if [ $? -ne 0 -o -z "$datetime" ] ; then
+                echo >&2 "cannot get date time: $src"
+                continue
+            fi
+        fi
+        dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}"
+    elif [ "$extension" == "m4v" -o "$extension" == "avi" ] ; then
+        dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {printf "%04d/%02d-%02d\n", substr($3,0,4), substr($3,6,2), substr($3,9,2) ; exit}')
+        if [ $? -ne 0 -o -z "$dest" ] ; then
+            echo >&2 "cannot get date time: $src"
+            continue
+        fi
+    else
+        echo >&2 "unknown extension: $src"
+        continue
+    fi
+
+    mkdir -v -p $REPOS/$dest
+    mv "$src" "$REPOS/$dest/${digest}.${extension}"
+    if [ $? -ne 0 ] ; then
+        echo >&2 "cannot copy picture into repos: $src"
+        continue
+    fi
+done
