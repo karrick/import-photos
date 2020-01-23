@@ -1,14 +1,21 @@
 #!/bin/bash
 
 # USE:
-#     find $sourceDirectory -type f -print0 | xargs -0 -L25 -P4 ~/import-photos
+#     find $srcdir -type f -print0 | xargs -0 -L25 -P4 /path/to/import-photos $dstdir
 #
 # DEPENDENCIES:
 #     sha2 to calculate file digests
 #     exif to get date and time stamp from images
 #     ffmpeg to get date and time stamp from movies
 
-REPOS=~/all-pictures
+case $# in
+    0) echo >&2 "usage: $(basename $0) destdir file1 file2..."
+       exit 2
+       ;;
+    *) REPOS=$1
+       shift
+       ;;
+esac
 
 SHA2=$(which sha2)
 if [ -z "$SHA2" ] ; then

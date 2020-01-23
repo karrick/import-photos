@@ -5,7 +5,7 @@ Deduplicates photos and organizes them by date.
 ## Use
 
 ```
-find $sourceDirectory -type f -print0 | xargs -0 -L25 -P4 /path/to/import-photos
+find $srcdir -type f -print0 | xargs -0 -L25 -P4 /path/to/import-photos $dstdir
 ```
 
 ## DEPENDENCIES:
