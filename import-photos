@@ -31,12 +31,14 @@ MDLS=$(which mdls)
 # DEFAULTS
 copymove=mv
 tfix=
+verbose=
 
 OPTIND=1
-while getopts :ct option 2>/dev/null ; do
+while getopts :ctv option 2>/dev/null ; do
     case $option in
         c) copymove=cp ;;
         t) tfix=true ;;
+        v) verbose="-v" ;;
         \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
         \?) echo >&2 "unknown argument [$OPTARG]" ; exit 2 ;;
     esac
@@ -44,7 +46,7 @@ done
 shift $(($OPTIND-1))
 
 case $# in
-    0) echo >&2 "usage: $(basename $0) [-c] [-t] destdir file1 file2..."
+    0) echo >&2 "usage: $(basename $0) [-c] [-t] [-v] destdir file1 file2..."
        exit 2
        ;;
     *) destdir=$1
@@ -58,21 +60,46 @@ for src ; do
         continue
     fi
 
-    digest=$($SHA2 -q -256 "$src")
-    if [ -z "$digest" ] ; then
-        echo >&2 "empty file digest: $src"
-        exit 1
-    fi
-
+    aae=
+    basename="${src%.*}"
     extension=$(tr A-Z a-z <<< "${src##*.}")
+
+    # Prefer dealing with JPG over AAE.
+    case $extension in
+        aae)
+            extension=jpg
+            maybe="${basename}.${extension}"
+            if [ ! -f "$maybe" ] ; then
+                extension=jpeg
+                maybe="${basename}.${extension}"
+                if [ ! -f "$maybe" ] ; then
+                    echo >&2 "ignoring aae file without pair: $src"
+                    continue
+                fi
+            fi
+            aae=$src
+            src=$maybe
+            echo >&2 "aae to jpg conversion: $src"
+            ;;
+    esac
 
     case $extension in
         jpg|jpeg)
+            if [ -z "$aae" ] ; then
+                aae="${basename}.aae"
+                if [ ! -f "$aae" ] ; then
+                    aae=
+                fi
+            fi
             datetime=$($EXIF -m -t DateTimeOriginal "$src")
             if [ $? -ne 0 -o -z "$datetime" ] ; then
                 datetime=$($EXIF -m -t DateTime "$src")
                 if [ $? -ne 0 -o -z "$datetime" ] ; then
-                    datetime="??"
+                    if [ -n "$MDLS" ] ; then
+                        datetime=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
+                    else
+                        datetime="??"
+                    fi
                 fi
             fi
             case $datetime in
@@ -109,12 +136,29 @@ for src ; do
             continue
             ;;
     esac
-
     # echo >&2 "[$src] -> [$dest]"
+    # echo >&2 "src: $src"
+    # echo >&2 "aae: $aae"
+    # echo >&2  "dest: $dest"
+    # continue
+
+    digest=$($SHA2 -q -256 "$src")
+    if [ -z "$digest" ] ; then
+        echo >&2 "empty file digest: $src"
+        exit 1
+    fi
+
     mkdir -v -p $destdir/$dest
-    $copymove "$src" "$destdir/$dest/${digest}.${extension}"
+    $copymove $verbose "$src" "$destdir/$dest/${digest}.${extension}"
     if [ $? -ne 0 ] ; then
-        echo >&2 "cannot copy picture into repos: $src"
+        echo >&2 "cannot copy file into repos: $src"
         continue
+    fi
+    if [ -n "$aae" ] ; then
+        $copymove $verbose "$aae" "$destdir/$dest/${digest}.aae"
+        if [ $? -ne 0 ] ; then
+            echo >&2 "cannot copy metadata into repos: $src"
+            continue
+        fi
     fi
 done
