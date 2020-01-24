@@ -68,8 +68,19 @@ fi
 FFMPEG="-f $FFMPEG"
 
 MDLS=$(which mdls)
-[ $? -eq 0 ] && MDLS="-m $MDLS"
+if [ $? -eq 0 ] ; then
+    MDLS="-m $MDLS"
+else
+    MDLS="-m false"
+fi
+
+SIPS=$(which sips)
+if [ $? -eq 0 ] ; then
+    SIPS="-g $SIPS"
+else
+    SIPS="-g false"
+fi
 
 for srcroot ; do
-    find "$srcroot" -type f -print0 | xargs -0 $limit $parallel $worker $EXIF $FFMPEG $MDLS $SHA2 $copymove $tfix $verbose -d "$destroot"
+    find "$srcroot" -type f -print0 | xargs -0 $limit $parallel $worker $EXIF $FFMPEG $MDLS $SIPS $SHA2 $copymove $tfix $verbose -d "$destroot"
 done

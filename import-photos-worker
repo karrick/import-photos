@@ -16,14 +16,15 @@ tfix=
 verbose=
 
 OPTIND=1
-while getopts :cd:e:f:m:s:tv option 2>/dev/null ; do
+while getopts :cd:e:f:g:m:s:tv option 2>/dev/null ; do
     case $option in
-        s) SHA2=$OPTARG ;;
-        e) EXIF=$OPTARG ;;
-        f) FFMPEG=$OPTARG ;;
-        m) MDLS=$OPTARG ;;
         c) copymove=cp ;;
         d) destroot="$OPTARG" ;;
+        e) EXIF=$OPTARG ;;
+        f) FFMPEG=$OPTARG ;;
+        g) SIPS=$OPTARG ;;
+        m) MDLS=$OPTARG ;;
+        s) SHA2=$OPTARG ;;
         t) tfix=true ;;
         v) verbose="-v" ;;
         \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
@@ -63,7 +64,13 @@ if [ -z "$FFMPEG" ] ; then
     fi
 fi
 
-[ -z "$MDLS" ] && MDLS=$(which mdls)
+if [ -z "$MDLS" ] ; then
+    MDLS=$(which mdls) || MDLS=false
+fi
+
+if [ -z "$SIPS" ] ; then
+    SIPS=$(which sips) || SIPS=false
+fi
 
 for src ; do
     if [ ! -f "$src" ] ; then
@@ -95,20 +102,22 @@ for src ; do
             echo >&2 "aae to jpg conversion: $src"
             ;;
         gif)
-            # convert GIF files to PNG
-            out="${basename}.png"
-            sips -s format png "$src" --out "$out"
-            if [ $? -ne 0 ] ; then
-                echo >&2 "cannot convert GIF to PNG: $src"
-                continue
+            if [ "$SIPS" != "false" ] ; then
+                # convert GIF files to PNG
+                out="${basename}.png"
+                $SIPS -s format png "$src" --out "$out"
+                if [ $? -ne 0 ] ; then
+                    echo >&2 "cannot convert GIF to PNG: $src"
+                    continue
+                fi
+                rm -f "$src"
+                if [ $? -ne 0 ] ; then
+                    echo >&2 "cannot delete GIF: $src"
+                    continue
+                fi
+                src=$out
+                extension=png
             fi
-            rm -f "$src"
-            if [ $? -ne 0 ] ; then
-                echo >&2 "cannot delete GIF: $src"
-                continue
-            fi
-            src=$out
-            extension=png
             ;;
     esac
 
@@ -137,7 +146,7 @@ for src ; do
     esac
 
     if [ -z "$datestamp" -o "$datestamp" == "" -o "$datestamp" == "??" ] ; then
-        if [ -n "$MDLS" ] ; then
+        if [ "$MDLS" != "false" ] ; then
             # [ -n "$verbose" ] && echo >&2 "using $MDLS to resolve datestamp: $src"
             dest=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
         fi
