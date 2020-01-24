@@ -23,7 +23,7 @@ while getopts :cd:e:f:m:s:tv option 2>/dev/null ; do
         f) FFMPEG=$OPTARG ;;
         m) MDLS=$OPTARG ;;
         c) copymove=cp ;;
-        d) destroot=$OPTARG ;;
+        d) destroot="$OPTARG" ;;
         t) tfix=true ;;
         v) verbose="-v" ;;
         \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
@@ -63,9 +63,7 @@ if [ -z "$FFMPEG" ] ; then
     fi
 fi
 
-if [ -z "$MDLS" ] ; then
-    MDLS=$(which mdls)
-fi
+[ -z "$MDLS" ] && MDLS=$(which mdls)
 
 for src ; do
     if [ ! -f "$src" ] ; then
@@ -76,17 +74,19 @@ for src ; do
     aae=
     basename="${src%.*}"
     extension=$(tr A-Z a-z <<< "${src##*.}")
+    datestamp=
+    dest=
 
-    # Prefer dealing with JPG over AAE.
     case $extension in
         aae)
+            # Prefer dealing with JPG over AAE.
             extension=jpg
             maybe="${basename}.${extension}"
             if [ ! -f "$maybe" ] ; then
                 extension=jpeg
                 maybe="${basename}.${extension}"
                 if [ ! -f "$maybe" ] ; then
-                    echo >&2 "ignoring aae file without pair: $src"
+                    [ -n "$verbose" ] && echo >&2 "ignoring aae file without pair: $src"
                     continue
                 fi
             fi
@@ -94,61 +94,64 @@ for src ; do
             src=$maybe
             echo >&2 "aae to jpg conversion: $src"
             ;;
+        gif)
+            # convert GIF files to PNG
+            out="${basename}.png"
+            sips -s format png "$src" --out "$out"
+            if [ $? -ne 0 ] ; then
+                echo >&2 "cannot convert GIF to PNG: $src"
+                continue
+            fi
+            rm -f "$src"
+            if [ $? -ne 0 ] ; then
+                echo >&2 "cannot delete GIF: $src"
+                continue
+            fi
+            src=$out
+            extension=png
+            ;;
     esac
 
     case $extension in
         jpg|jpeg)
+            extension=jpg # convert jpeg extensions to jpg
             if [ -z "$aae" ] ; then
                 aae="${basename}.aae"
                 if [ ! -f "$aae" ] ; then
                     aae=
                 fi
             fi
-            datetime=$($EXIF -m -t DateTimeOriginal "$src")
-            if [ $? -ne 0 -o -z "$datetime" ] ; then
-                datetime=$($EXIF -m -t DateTime "$src")
-                if [ $? -ne 0 -o -z "$datetime" ] ; then
-                    if [ -n "$MDLS" ] ; then
-                        datetime=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
-                    else
-                        datetime="??"
-                    fi
-                fi
+            datestamp=$($EXIF -m -t DateTimeOriginal "$src")
+            if [ $? -ne 0 -o -z "$datestamp" -o "$datestamp" == "??" ] ; then
+                [ -n "$verbose" ] && echo >&2 "datestamp: [$datestamp]"
             fi
-            case $datetime in
-                ??)
-                if [ -z "$tfix" ] ; then
-                    echo >&2 "cannot get date time: $src"
-                    continue
-                fi
-                dest=1970/01-01
-                ;;
-                *) dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}" ;;
-            esac
-            extension=jpg # jpeg -> jpg
-            ;;
-        heic|png)
-            if [ -z "$MDLS" ] ; then
-                echo >&2 "cannot get date time: $src"
-                continue
-            fi
-            dest=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
             ;;
         avi|m4v|mov|mp4|3gp)
-            dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2) ; exit}')
-            if [ $? -ne 0 -o -z "$dest" ] ; then
-                if [ -z "$tfix" ] ; then
-                    echo >&2 "cannot get date time: $src"
-                    continue
-                fi
-                dest=1970/01-01
-            fi
+            datestamp=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2) ; exit}')
             ;;
+        heic|png) : ;;
         *)
             echo >&2 "unknown extension: $src"
             continue
             ;;
     esac
+
+    if [ -z "$datestamp" -o "$datestamp" == "" -o "$datestamp" == "??" ] ; then
+        if [ -n "$MDLS" ] ; then
+            # [ -n "$verbose" ] && echo >&2 "using $MDLS to resolve datestamp: $src"
+            dest=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
+        fi
+        if [ -z "$dest" ] ; then
+            if [ -z "$tfix" ] ; then
+                echo >&2 "cannot get date time: $src"
+                continue
+            fi
+            dest=1970/01-01
+        fi
+    else
+        dest="${datestamp:0:4}/${datestamp:5:2}-${datestamp:8:2}"
+    fi
+
     # echo >&2 "[$src] -> [$dest]"
     # echo >&2 "src: $src"
     # echo >&2 "aae: $aae"
