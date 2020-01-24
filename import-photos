@@ -8,36 +8,51 @@
 #     exif to get date and time stamp from images
 #     ffmpeg to get date and time stamp from movies
 
-case $# in
-    0) echo >&2 "usage: $(basename $0) destdir file1 file2..."
-       exit 2
-       ;;
-    *) REPOS=$1
-       shift
-       ;;
-esac
-
 SHA2=$(which sha2)
 if [ -z "$SHA2" ] ; then
-    echo >&2 "cannot find sha2"
+    echo >&2 "install 'sha2' in order to calculate file digests."
     exit 1
 fi
 
 EXIF=$(which exif)
 if [ -z "$EXIF" ] ; then
-    echo >&2 "cannot find exif"
+    echo >&2 "install 'exif' in order to get date and time stamps from images."
     exit 1
 fi
 
 FFMPEG=$(which ffmpeg)
 if [ -z "$FFMPEG" ] ; then
-    echo >&2 "cannot find ffmpeg"
+    echo >&2 "install 'ffmpeg' in order to get date and time stamps from videos."
     exit 1
 fi
 
+# DEFAULTS
+copymove=mv
+tfix=
+
+OPTIND=1
+while getopts :ct option 2>/dev/null ; do
+    case $option in
+        c) copymove=cp ;;
+        t) tfix=true ;;
+        \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
+        \?) echo >&2 "unknown argument [$OPTARG]" ; exit 2 ;;
+    esac
+done
+shift $(($OPTIND-1))
+
+case $# in
+    0) echo >&2 "usage: $(basename $0) [-c] [-t] destdir file1 file2..."
+       exit 2
+       ;;
+    *) destdir=$1
+       shift
+       ;;
+esac
+
 for src ; do
-    if [ ! -r "$src" -o ! -s "$src" ] ; then
-        echo >&2 "cannot find file: $src"
+    if [ ! -f "$src" ] ; then
+        echo >&2 "cannot import file: $src"
         continue
     fi
 
@@ -49,36 +64,45 @@ for src ; do
 
     extension=$(tr A-Z a-z <<< "${src##*.}")
 
-    if [ "$extension" == "jpg" ] ; then
-        datetime=$($EXIF -m -t DateTimeOriginal "$src")
-        if [ $? -ne 0 -o -z "$datetime" ] ; then
-            # echo >&2 "trying DateTime..."
-            datetime=$($EXIF -m -t DateTime "$src")
+    case $extension in
+        jpg|jpeg)
+            datetime=$($EXIF -m -t DateTimeOriginal "$src")
             if [ $? -ne 0 -o -z "$datetime" ] ; then
-                echo >&2 "cannot get date time: $src"
-                # continue
-                datetime="??"
+                datetime=$($EXIF -m -t DateTime "$src")
+                if [ $? -ne 0 -o -z "$datetime" ] ; then
+                    datetime="??"
+                fi
             fi
-        fi
-        case $datetime in
-            ??) datetime=1970-01-01 ; echo >&2 "cannot get date time: $src" ;;
-            *) : ;;
-        esac
-        dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}"
-    elif [ "$extension" == "m4v" -o "$extension" == "avi" -o "$extension" == "mp4" -o "$extension" == "3gp" -o "$extension" == "mov" ] ; then
-        dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {printf "%04d/%02d-%02d\n", substr($3,0,4), substr($3,6,2), substr($3,9,2) ; exit}')
-        if [ $? -ne 0 -o -z "$dest" ] ; then
-            echo >&2 "cannot get date time: $src"
+            case $datetime in
+                ??)
+                if [ -z "$tfix" ] ; then
+                    echo >&2 "cannot get date time: $src"
+                    continue
+                fi
+                dest=1970/01-01
+                ;;
+                *) dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}" ;;
+            esac
+            ;;
+        avi|m4v|mov|mp4|3gp)
+            dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {printf "%04d/%02d-%02d\n", substr($3,0,4), substr($3,6,2), substr($3,9,2) ; exit}')
+            if [ $? -ne 0 -o -z "$dest" ] ; then
+                if [ -z "$tfix" ] ; then
+                    echo >&2 "cannot get date time: $src"
+                    continue
+                fi
+                dest=1970/01-01
+            fi
+            ;;
+        *)
+            echo >&2 "unknown extension: $src"
             continue
-        fi
-    else
-        echo >&2 "unknown extension: $src"
-        continue
-    fi
+            ;;
+    esac
 
     # echo >&2 "[$src] -> [$dest]"
-    mkdir -v -p $REPOS/$dest
-    mv "$src" "$REPOS/$dest/${digest}.${extension}"
+    mkdir -v -p $destdir/$dest
+    $copymove "$src" "$destdir/$dest/${digest}.${extension}"
     if [ $? -ne 0 ] ; then
         echo >&2 "cannot copy picture into repos: $src"
         continue
