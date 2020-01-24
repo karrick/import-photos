@@ -26,6 +26,8 @@ if [ -z "$FFMPEG" ] ; then
     exit 1
 fi
 
+MDLS=$(which mdls)
+
 # DEFAULTS
 copymove=mv
 tfix=
@@ -83,6 +85,13 @@ for src ; do
                 ;;
                 *) dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}" ;;
             esac
+            ;;
+        heic)
+            if [ -z "$MDLS" ] ; then
+                echo >&2 "cannot get date time: $src"
+                continue
+            fi
+            datetime=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print $3}')
             ;;
         avi|m4v|mov|mp4|3gp)
             dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {printf "%04d/%02d-%02d\n", substr($3,0,4), substr($3,6,2), substr($3,9,2) ; exit}')
