@@ -5,7 +5,7 @@ Deduplicates photos and organizes them by date.
 ## Use
 
 ```
-import-photos-driver [-c] [-l limit] [-p parallel] [-t] [-v] destroot srcroot1...
+import-photos [-c] [-l limit] [-p parallel] [-t] [-v] destroot srcroot1 srcroot2...
 ```
 
 ## DEPENDENCIES:
