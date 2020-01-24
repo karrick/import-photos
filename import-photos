@@ -47,19 +47,25 @@ for src ; do
         exit 1
     fi
 
-    extension="${src##*.}"
+    extension=$(tr A-Z a-z <<< "${src##*.}")
 
     if [ "$extension" == "jpg" ] ; then
         datetime=$($EXIF -m -t DateTimeOriginal "$src")
         if [ $? -ne 0 -o -z "$datetime" ] ; then
+            # echo >&2 "trying DateTime..."
             datetime=$($EXIF -m -t DateTime "$src")
             if [ $? -ne 0 -o -z "$datetime" ] ; then
                 echo >&2 "cannot get date time: $src"
-                continue
+                # continue
+                datetime="??"
             fi
         fi
+        case $datetime in
+            ??) datetime=1970-01-01 ; echo >&2 "cannot get date time: $src" ;;
+            *) : ;;
+        esac
         dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}"
-    elif [ "$extension" == "m4v" -o "$extension" == "avi" ] ; then
+    elif [ "$extension" == "m4v" -o "$extension" == "avi" -o "$extension" == "mp4" -o "$extension" == "3gp" -o "$extension" == "mov" ] ; then
         dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {printf "%04d/%02d-%02d\n", substr($3,0,4), substr($3,6,2), substr($3,9,2) ; exit}')
         if [ $? -ne 0 -o -z "$dest" ] ; then
             echo >&2 "cannot get date time: $src"
@@ -70,6 +76,7 @@ for src ; do
         continue
     fi
 
+    # echo >&2 "[$src] -> [$dest]"
     mkdir -v -p $REPOS/$dest
     mv "$src" "$REPOS/$dest/${digest}.${extension}"
     if [ $? -ne 0 ] ; then
