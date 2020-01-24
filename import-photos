@@ -46,10 +46,10 @@ done
 shift $(($OPTIND-1))
 
 case $# in
-    0) echo >&2 "usage: $(basename $0) [-c] [-t] [-v] destdir file1 file2..."
+    0) echo >&2 "usage: $(basename $0) [-c] [-t] [-v] destroot file1 file2..."
        exit 2
        ;;
-    *) destdir=$1
+    *) destroot=$1
        shift
        ;;
 esac
@@ -148,16 +148,16 @@ for src ; do
         exit 1
     fi
 
-    mkdir -v -p $destdir/$dest
-    $copymove $verbose "$src" "$destdir/$dest/${digest}.${extension}"
+    mkdir $verbose -p "$destroot/$dest"
+    $copymove $verbose "$src" "$destroot/$dest/${digest}.${extension}"
     if [ $? -ne 0 ] ; then
-        echo >&2 "cannot copy file into repos: $src"
+        echo >&2 "cannot transfer file into repos: $src"
         continue
     fi
     if [ -n "$aae" ] ; then
-        $copymove $verbose "$aae" "$destdir/$dest/${digest}.aae"
+        $copymove $verbose "$aae" "$destroot/$dest/${digest}.aae"
         if [ $? -ne 0 ] ; then
-            echo >&2 "cannot copy metadata into repos: $src"
+            echo >&2 "cannot transfer metadata file into repos: $src"
             continue
         fi
     fi
