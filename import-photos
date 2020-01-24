@@ -85,6 +85,7 @@ for src ; do
                 ;;
                 *) dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}" ;;
             esac
+            extension=jpg # jpeg -> jpg
             ;;
         heic)
             if [ -z "$MDLS" ] ; then
