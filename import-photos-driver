@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# USE:
+#     import-photos-driver [-c] [-l limit] [-p parallel] [-t] [-v] destroot srcroot1...
+#
+# DEPENDENCIES:
+#     import-photos-worker, in same directory as this program, which itself requires:
+#         sha2 to calculate file digests
+#         exif to get date and time stamp from images
+#         ffmpeg to get date and time stamp from movies
+#         mdls (optional) to get date stamp from media
+
+worker=$(dirname $0)/import-photos-worker
+if [ ! -x "$worker" ] ; then
+    echo >&2 "cannot import without worker: $worker."
+    exit 1
+fi
+
+# DEFAULTS
+copymove=
+limit=
+parallel=
+tfix=
+verbose=
+
+OPTIND=1
+while getopts :cl:p:tv option 2>/dev/null ; do
+    case $option in
+        c) copymove="-c" ;;
+        l) limit="-L${OPTARG}" ;;
+        p) parallel="-P${OPTARG}" ;;
+        t) tfix="-t" ;;
+        v) verbose="-v" ;;
+        \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
+        \?) echo >&2 "unknown argument [$OPTARG]" ; exit 2 ;;
+    esac
+done
+shift $(($OPTIND-1))
+
+case $# in
+    *) destroot=$1
+       shift
+       ;;
+    0|1) echo >&2 "usage: $(basename $0) [-c] [-l limit] [-p parallel] [-t] [-v] srcroot destroot"
+         exit 2
+         ;;
+esac
+
+for srcroot ; do
+    find $srcroot -type f -print0 | xargs -0 $limit $parallel $worker $copymove $tfix $verbose $destroot
+done

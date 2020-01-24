@@ -1,0 +1,165 @@
+#!/bin/bash
+
+# USE:
+#     import-photos-worker [-c] [-t] [-v] $destroot file1 file2...
+#
+# DEPENDENCIES:
+#     sha2 to calculate file digests
+#     exif to get date and time stamp from images
+#     ffmpeg to get date and time stamp from movies
+#     mdls (optional) to get date stamp from media
+
+SHA2=$(which sha2)
+if [ -z "$SHA2" ] ; then
+    echo >&2 "install 'sha2' in order to calculate file digests."
+    exit 1
+fi
+
+EXIF=$(which exif)
+if [ -z "$EXIF" ] ; then
+    echo >&2 "install 'exif' in order to get date and time stamps from images."
+    exit 1
+fi
+
+FFMPEG=$(which ffmpeg)
+if [ -z "$FFMPEG" ] ; then
+    echo >&2 "install 'ffmpeg' in order to get date and time stamps from videos."
+    exit 1
+fi
+
+MDLS=$(which mdls)
+
+# DEFAULTS
+copymove=mv
+tfix=
+verbose=
+
+OPTIND=1
+while getopts :ctv option 2>/dev/null ; do
+    case $option in
+        c) copymove=cp ;;
+        t) tfix=true ;;
+        v) verbose="-v" ;;
+        \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
+        \?) echo >&2 "unknown argument [$OPTARG]" ; exit 2 ;;
+    esac
+done
+shift $(($OPTIND-1))
+
+case $# in
+    0) echo >&2 "usage: $(basename $0) [-c] [-t] [-v] destroot file1 file2..."
+       exit 2
+       ;;
+    *) destroot=$1
+       shift
+       ;;
+esac
+
+for src ; do
+    if [ ! -f "$src" ] ; then
+        echo >&2 "cannot import file: $src"
+        continue
+    fi
+
+    aae=
+    basename="${src%.*}"
+    extension=$(tr A-Z a-z <<< "${src##*.}")
+
+    # Prefer dealing with JPG over AAE.
+    case $extension in
+        aae)
+            extension=jpg
+            maybe="${basename}.${extension}"
+            if [ ! -f "$maybe" ] ; then
+                extension=jpeg
+                maybe="${basename}.${extension}"
+                if [ ! -f "$maybe" ] ; then
+                    echo >&2 "ignoring aae file without pair: $src"
+                    continue
+                fi
+            fi
+            aae=$src
+            src=$maybe
+            echo >&2 "aae to jpg conversion: $src"
+            ;;
+    esac
+
+    case $extension in
+        jpg|jpeg)
+            if [ -z "$aae" ] ; then
+                aae="${basename}.aae"
+                if [ ! -f "$aae" ] ; then
+                    aae=
+                fi
+            fi
+            datetime=$($EXIF -m -t DateTimeOriginal "$src")
+            if [ $? -ne 0 -o -z "$datetime" ] ; then
+                datetime=$($EXIF -m -t DateTime "$src")
+                if [ $? -ne 0 -o -z "$datetime" ] ; then
+                    if [ -n "$MDLS" ] ; then
+                        datetime=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
+                    else
+                        datetime="??"
+                    fi
+                fi
+            fi
+            case $datetime in
+                ??)
+                if [ -z "$tfix" ] ; then
+                    echo >&2 "cannot get date time: $src"
+                    continue
+                fi
+                dest=1970/01-01
+                ;;
+                *) dest="${datetime:0:4}/${datetime:5:2}-${datetime:8:2}" ;;
+            esac
+            extension=jpg # jpeg -> jpg
+            ;;
+        heic|png)
+            if [ -z "$MDLS" ] ; then
+                echo >&2 "cannot get date time: $src"
+                continue
+            fi
+            dest=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
+            ;;
+        avi|m4v|mov|mp4|3gp)
+            dest=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2) ; exit}')
+            if [ $? -ne 0 -o -z "$dest" ] ; then
+                if [ -z "$tfix" ] ; then
+                    echo >&2 "cannot get date time: $src"
+                    continue
+                fi
+                dest=1970/01-01
+            fi
+            ;;
+        *)
+            echo >&2 "unknown extension: $src"
+            continue
+            ;;
+    esac
+    # echo >&2 "[$src] -> [$dest]"
+    # echo >&2 "src: $src"
+    # echo >&2 "aae: $aae"
+    # echo >&2  "dest: $dest"
+    # continue
+
+    digest=$($SHA2 -q -256 "$src")
+    if [ -z "$digest" ] ; then
+        echo >&2 "empty file digest: $src"
+        exit 1
+    fi
+
+    mkdir $verbose -p "$destroot/$dest"
+    $copymove $verbose "$src" "$destroot/$dest/${digest}.${extension}"
+    if [ $? -ne 0 ] ; then
+        echo >&2 "cannot transfer file into repos: $src"
+        continue
+    fi
+    if [ -n "$aae" ] ; then
+        $copymove $verbose "$aae" "$destroot/$dest/${digest}.aae"
+        if [ $? -ne 0 ] ; then
+            echo >&2 "cannot transfer metadata file into repos: $src"
+            continue
+        fi
+    fi
+done
