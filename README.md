@@ -17,5 +17,5 @@ find $srcdir -type f -print0 | xargs -0 -L25 -P4 /path/to/import-photos $dstdir
 ## macOS
 
 ```
-brew install sha1 exif ffmpeg
+brew install sha2 exif ffmpeg
 ```
