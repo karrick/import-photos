@@ -87,7 +87,7 @@ for src ; do
             esac
             extension=jpg # jpeg -> jpg
             ;;
-        heic)
+        heic|png)
             if [ -z "$MDLS" ] ; then
                 echo >&2 "cannot get date time: $src"
                 continue
