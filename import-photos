@@ -28,7 +28,7 @@ OPTIND=1
 while getopts :cd:l:p:tv option 2>/dev/null ; do
     case $option in
         c) copymove="-c" ;;
-        d) destroot=$OPTARG ;;
+        d) destroot="$OPTARG" ;;
         l) limit="-L${OPTARG}" ;;
         p) parallel="-P${OPTARG}" ;;
         t) tfix="-t" ;;
@@ -68,8 +68,8 @@ fi
 FFMPEG="-f $FFMPEG"
 
 MDLS=$(which mdls)
-[ -n "$MDLS" ] && MDLS="-m $MDLS"
+[ $? -eq 0 ] && MDLS="-m $MDLS"
 
 for srcroot ; do
-    find $srcroot -type f -print0 | xargs -0 $limit $parallel $worker "$EXIF" "$FFMPEG" "$MDLS" "$SHA2" $copymove $tfix $verbose -d $destroot
+    find "$srcroot" -type f -print0 | xargs -0 $limit $parallel $worker $EXIF $FFMPEG $MDLS $SHA2 $copymove $tfix $verbose -d "$destroot"
 done
