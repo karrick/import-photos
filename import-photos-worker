@@ -4,10 +4,11 @@
 #     import-photos-worker [-c] [-t] [-v] -d destroot file1...
 #
 # DEPENDENCIES:
-#     sha2 to calculate file digests
-#     exif to get date stamps from images
+#     exiftime from the exiftags package to get date stamps from images
 #     ffmpeg to get date stamps from movies
+#     gif2png (optional) to convert GIF to PNG
 #     mdls (optional) to get date stamps from media
+#     openssh to calculate file digests
 
 # DEFAULTS
 copymove=mv
@@ -22,9 +23,9 @@ while getopts :cd:e:f:g:m:s:tv option 2>/dev/null ; do
         d) destroot="$OPTARG" ;;
         e) EXIF=$OPTARG ;;
         f) FFMPEG=$OPTARG ;;
-        g) SIPS=$OPTARG ;;
+        g) GIF2PNG=$OPTARG ;;
         m) MDLS=$OPTARG ;;
-        s) SHA2=$OPTARG ;;
+        s) DIGEST=$OPTARG ;;
         t) tfix=true ;;
         v) verbose="-v" ;;
         \:) echo >&2 "option [$OPTARG] requires an argument" ; exit 2 ;;
@@ -40,18 +41,18 @@ case $# in
     *) : ;;
 esac
 
-if [ -z "$SHA2" ] ; then
-    SHA2=$(which sha2)
+if [ -z "$DIGEST" ] ; then
+    DIGEST=$(which openssl)
     if [ $? -ne 0 ] ; then
-        echo >&2 "install 'sha2' in order to calculate file digests."
+        echo >&2 "install 'openssl' in order to calculate file digests."
         exit 1
     fi
 fi
 
 if [ -z "$EXIF" ] ; then
-    EXIF=$(which exif)
+    EXIF=$(which exiftime)
     if [ $? -ne 0 ] ; then
-        echo >&2 "install 'exif' in order to get date and time stamps from images."
+        echo >&2 "install 'exiftags' in order to get date and time stamps from images."
         exit 1
     fi
 fi
@@ -68,13 +69,17 @@ if [ -z "$MDLS" ] ; then
     MDLS=$(which mdls) || MDLS=false
 fi
 
-if [ -z "$SIPS" ] ; then
-    SIPS=$(which sips) || SIPS=false
+if [ -z "$GIF2PNG" ] ; then
+    GIF2PNG=$(which gif2png) || GIF2PNG=false
 fi
 
 for src ; do
     if [ ! -f "$src" ] ; then
         echo >&2 "cannot import file: $src"
+        continue
+    fi
+    if [ "${src:0:2}" == "._" ] ; then
+        echo >&2 "ignoring metadata file: $src"
         continue
     fi
 
@@ -102,15 +107,33 @@ for src ; do
             echo >&2 "aae to jpg conversion: $src"
             ;;
         gif)
-            if [ "$SIPS" != "false" ] ; then
+            echo >&2 "cannot convert GIF to PNG: $src"
+            continue
+
+            if [ "$GIF2PNG" != "false" ] ; then
                 # convert GIF files to PNG
+                safe=$($GIF2PNG -w "$src")
+                if [ -z "$safe" ] ; then
+                    # multi-image
+                    echo >&2 "cannot convert multi-image GIF to PNG: $src"
+                    continue
+                fi
                 out="${basename}.png"
-                $SIPS -s format png "$src" --out "$out"
+                $GIF2PNG -m -d "$src"
                 if [ $? -ne 0 ] ; then
                     echo >&2 "cannot convert GIF to PNG: $src"
                     continue
                 fi
-                rm -f "$src"
+                if [ -e "${basename}.p01" ] ; then
+                    # multi-image
+                    rm -f "${basename}.p*"
+                    if [ $? -ne 0 ] ; then
+                        echo >&2 "cannot delete GIF: $src"
+                        continue
+                    fi
+                else
+                    rm -f "$src"
+                fi
                 if [ $? -ne 0 ] ; then
                     echo >&2 "cannot delete GIF: $src"
                     continue
@@ -130,7 +153,7 @@ for src ; do
                     aae=
                 fi
             fi
-            datestamp=$($EXIF -m -t DateTimeOriginal "$src")
+            datestamp=$($EXIF "$src" | awk '{print $3 ; exit}')
             if [ $? -ne 0 -o -z "$datestamp" -o "$datestamp" == "??" ] ; then
                 [ -n "$verbose" ] && echo >&2 "datestamp: [$datestamp]"
             fi
@@ -167,7 +190,7 @@ for src ; do
     # echo >&2  "dest: $dest"
     # continue
 
-    digest=$($SHA2 -q -256 "$src")
+    digest=$($DIGEST sha256 "$src")
     if [ -z "$digest" ] ; then
         echo >&2 "empty file digest: $src"
         exit 1

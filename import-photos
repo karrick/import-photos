@@ -5,10 +5,11 @@
 #
 # DEPENDENCIES:
 #     import-photos-worker, in same directory as this program, which itself requires:
-#         sha2 to calculate file digests
-#         exif to get date stamps from images
+#         exiftime from the exiftags package to get date stamps from images
 #         ffmpeg to get date stamps from movies
+#         gif2png (optional) to convert GIF to PNG
 #         mdls (optional) to get date stamps from media
+#         openssh to calculate file digests
 
 worker=$(dirname $0)/import-photos-worker
 if [ ! -x "$worker" ] ; then
@@ -46,16 +47,16 @@ case $# in
     *) : ;;
 esac
 
-SHA2=$(which sha2)
+DIGEST=$(which openssl)
 if [ $? -ne 0 ] ; then
-    echo >&2 "install 'sha2' in order to calculate file digests."
+    echo >&2 "install 'openssl' in order to calculate file digests."
     exit 1
 fi
-SHA2="-s $SHA2"
+DIGEST="-s $DIGEST"
 
-EXIF=$(which exif)
+EXIF=$(which exiftime)
 if [ $? -ne 0 ] ; then
-    echo >&2 "install 'exif' in order to get date stamps from images."
+    echo >&2 "install 'exiftags' in order to get date stamps from images."
     exit 1
 fi
 EXIF="-e $EXIF"
@@ -74,13 +75,13 @@ else
     MDLS="-m false"
 fi
 
-SIPS=$(which sips)
+GIF2PNG=$(which gif2png)
 if [ $? -eq 0 ] ; then
-    SIPS="-g $SIPS"
+    GIF2PNG="-g $GIF2PNG"
 else
-    SIPS="-g false"
+    GIF2PNG="-g false"
 fi
 
 for srcroot ; do
-    find "$srcroot" -type f -print0 | xargs -0 $limit $parallel $worker $EXIF $FFMPEG $MDLS $SIPS $SHA2 $copymove $tfix $verbose -d "$destroot"
+    find "$srcroot" -type f -print0 | xargs -0 $limit $parallel $worker $EXIF $FFMPEG $MDLS $GIF2PNG $DIGEST $copymove $tfix $verbose -d "$destroot"
 done

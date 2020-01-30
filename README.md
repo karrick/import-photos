@@ -10,13 +10,26 @@ import-photos [-c] [-l limit] [-p parallel] [-t] [-v] -d destroot srcroot1 srcro
 
 ## DEPENDENCIES:
 
-1. `sha2` to calculate file digests
-1. `exif` to get date and time stamp from images
-1. `ffmpeg` to get date and time stamp from movies
+1. `exiftime` from the `exittags` package to get date and time stamp from pictures
+1. `ffmpeg` to get date and time stamp from video files
+1. `gif2png` (optional) to convert GIF to PNG files
 1. `mdls` (optional, included in macOS) to get date stamp from media
+1. `openssl` to calculate file digests
+
+## debian / ubuntu
+
+```
+sudo apt get exiftime ffmpeg gif2png openssl
+```
 
 ## macOS
 
 ```
-brew install sha2 exif ffmpeg
+brew install exiftime ffmpeg gif2png openssl
+```
+
+## RHEL / CentOS
+
+```
+sudo yum install exiftime ffmpeg gif2png openssl
 ```
