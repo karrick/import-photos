@@ -19,17 +19,17 @@ import-photos [-c] [-l limit] [-p parallel] [-t] [-v] -d destroot srcroot1 srcro
 ## debian / ubuntu
 
 ```
-sudo apt get exiftime ffmpeg gif2png openssl
+sudo apt get exiftags ffmpeg gif2png openssl
 ```
 
 ## macOS
 
 ```
-brew install exiftime ffmpeg gif2png openssl
+brew install exiftags ffmpeg gif2png openssl
 ```
 
 ## RHEL / CentOS
 
 ```
-sudo yum install exiftime ffmpeg gif2png openssl
+sudo yum install exiftags ffmpeg gif2png openssl
 ```
