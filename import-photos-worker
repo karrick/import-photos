@@ -112,7 +112,7 @@ for src ; do
 
             if [ "$GIF2PNG" != "false" ] ; then
                 # convert GIF files to PNG
-                safe=$($GIF2PNG -w "$src")
+                safe=$($GIF2PNG -w "$src" 2>/dev/null)
                 if [ -z "$safe" ] ; then
                     # multi-image
                     echo >&2 "cannot convert multi-image GIF to PNG: $src"
@@ -122,20 +122,6 @@ for src ; do
                 $GIF2PNG -m -d "$src"
                 if [ $? -ne 0 ] ; then
                     echo >&2 "cannot convert GIF to PNG: $src"
-                    continue
-                fi
-                if [ -e "${basename}.p01" ] ; then
-                    # multi-image
-                    rm -f "${basename}.p*"
-                    if [ $? -ne 0 ] ; then
-                        echo >&2 "cannot delete GIF: $src"
-                        continue
-                    fi
-                else
-                    rm -f "$src"
-                fi
-                if [ $? -ne 0 ] ; then
-                    echo >&2 "cannot delete GIF: $src"
                     continue
                 fi
                 src=$out
@@ -168,7 +154,11 @@ for src ; do
             ;;
     esac
 
-    if [ -z "$datestamp" -o "$datestamp" == "" -o "$datestamp" == "??" ] ; then
+    if [ "$datestamp" != "" -a "$datestamp" != "??" ] ; then
+        dest="${datestamp:0:4}/${datestamp:5:2}-${datestamp:8:2}"
+    else
+        # When previous logic could not determine date stamp, attempt to use
+        # `mdls` to resolve.
         if [ "$MDLS" != "false" ] ; then
             # [ -n "$verbose" ] && echo >&2 "using $MDLS to resolve datestamp: $src"
             dest=$($MDLS -name kMDItemContentCreationDate "$src" | awk '{print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2)}')
@@ -180,8 +170,6 @@ for src ; do
             fi
             dest=1970/01-01
         fi
-    else
-        dest="${datestamp:0:4}/${datestamp:5:2}-${datestamp:8:2}"
     fi
 
     # echo >&2 "[$src] -> [$dest]"
