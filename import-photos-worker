@@ -78,7 +78,8 @@ for src ; do
         echo >&2 "cannot import file: $src"
         continue
     fi
-    if [ "${src:0:2}" == "._" ] ; then
+    basename=$(basename "$src")
+    if [ "${basename:0:2}" == "._" ] ; then
         echo >&2 "ignoring metadata file: $src"
         continue
     fi
@@ -90,72 +91,57 @@ for src ; do
     dest=
 
     case $extension in
-        aae)
-            # Prefer dealing with JPG over AAE.
-            extension=jpg
-            maybe="${basename}.${extension}"
-            if [ ! -f "$maybe" ] ; then
-                extension=jpeg
-                maybe="${basename}.${extension}"
-                if [ ! -f "$maybe" ] ; then
-                    [ -n "$verbose" ] && echo >&2 "ignoring aae file without pair: $src"
-                    continue
-                fi
-            fi
-            aae=$src
-            src=$maybe
-            echo >&2 "aae to jpg conversion: $src"
-            ;;
         gif)
-            echo >&2 "cannot convert GIF to PNG: $src"
-            continue
-
             if [ "$GIF2PNG" != "false" ] ; then
-                # convert GIF files to PNG
+                # convert GIF files to PNG or MNG
                 safe=$($GIF2PNG -w "$src" 2>/dev/null)
-                if [ -z "$safe" ] ; then
-                    # multi-image
-                    echo >&2 "cannot convert multi-image GIF to PNG: $src"
-                    continue
+                if [ -n "$safe" ] ; then
+                    extension="png" # single frame GIF
+                else
+                    extension="mng" # multiple frame GIF
                 fi
-                out="${basename}.png"
-                $GIF2PNG -m -d "$src"
+                dest="${basename}.${extension}"
+                magick "$src" "$dest"
                 if [ $? -ne 0 ] ; then
-                    echo >&2 "cannot convert GIF to PNG: $src"
+                    echo >&2 "cannot convert GIF to PNG, MNG: $src"
+                    rm -f "$dest"
                     continue
                 fi
-                src=$out
-                extension=png
+                rm $verbose "$src"
+                if [ $? -ne 0 ] ; then
+                    echo >&2 "cannot remove original GIF: $src"
+                fi
+                src=$dest
             fi
             ;;
-    esac
-
-    case $extension in
         jpg|jpeg)
             extension=jpg # convert jpeg extensions to jpg
-            if [ -z "$aae" ] ; then
-                aae="${basename}.aae"
-                if [ ! -f "$aae" ] ; then
-                    aae=
-                fi
-            fi
-            datestamp=$($EXIF "$src" | awk '{print $3 ; exit}')
-            if [ $? -ne 0 -o -z "$datestamp" -o "$datestamp" == "??" ] ; then
-                [ -n "$verbose" ] && echo >&2 "datestamp: [$datestamp]"
-            fi
+            datestamp=$($EXIF "$src" 2>/dev/null | awk '{print $3 ; exit}')
             ;;
         avi|m4v|mov|mp4|3gp)
             datestamp=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2) ; exit}')
             ;;
-        heic|png) : ;;
+        mpg)
+            datestamp=$($FFMPEG -i "$src" -dump 2>&1 | awk '$1 == "creation_time" {print substr($3,0,4) "/" substr($3,6,2) "-" substr($3,9,2) ; exit}')
+            if [ -n "$datestamp" ] ; then
+                echo "[$src] -> [$datestamp]"
+            fi
+            continue
+            ;;
+        heic|mng|png) : ;;
+        aae) continue ;; # Apple image transformation file, does not contain actual image data
         *)
-            echo >&2 "unknown extension: $src"
+            # echo >&2 "unknown extension: $src"
             continue
             ;;
     esac
 
     if [ "$datestamp" != "" -a "$datestamp" != "??" ] ; then
         dest="${datestamp:0:4}/${datestamp:5:2}-${datestamp:8:2}"
+        if [ "$dest" == "(nul)-" ] ; then
+            echo >&2 "[$src] -> [$datestamp]"
+            continue
+        fi
     else
         # When previous logic could not determine date stamp, attempt to use
         # `mdls` to resolve.
@@ -165,36 +151,41 @@ for src ; do
         fi
         if [ -z "$dest" ] ; then
             if [ -z "$tfix" ] ; then
-                echo >&2 "cannot get date time: $src"
+                echo >&2 "cannot get datestamp: $src"
                 continue
             fi
             dest=1970/01-01
         fi
     fi
 
-    # echo >&2 "[$src] -> [$dest]"
+    # echo "[$src] -> [$dest]"
     # echo >&2 "src: $src"
-    # echo >&2 "aae: $aae"
     # echo >&2  "dest: $dest"
     # continue
 
-    digest=$($DIGEST sha256 "$src")
+    digest=$($DIGEST sha256 "$src" | awk '{print $NF}')
     if [ -z "$digest" ] ; then
         echo >&2 "empty file digest: $src"
         exit 1
     fi
+
+
+    dir="$destroot/${digest:0:3}"
+    mkdir $verbose -p "$dir"
+    if [ $? -ne 0 ] ; then
+        echo >&2 "cannot create directory: $dir"
+        continue
+    fi
+
+    echo "$src" >> "$dir/${digest:3:61}"
+    # registry="${digest:0:3}/${digest:3:61}"
+    # echo "[$src] -> [$digest] -> [$registry]"
+    continue
 
     mkdir $verbose -p "$destroot/$dest"
     $copymove $verbose "$src" "$destroot/$dest/${digest}.${extension}"
     if [ $? -ne 0 ] ; then
         echo >&2 "cannot transfer file into repos: $src"
         continue
-    fi
-    if [ -n "$aae" ] ; then
-        $copymove $verbose "$aae" "$destroot/$dest/${digest}.aae"
-        if [ $? -ne 0 ] ; then
-            echo >&2 "cannot transfer metadata file into repos: $src"
-            continue
-        fi
     fi
 done
