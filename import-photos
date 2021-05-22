@@ -7,7 +7,7 @@
 #     import-photos-worker, in same directory as this program, which itself requires:
 #         exiftime from the exiftags package to get date stamps from images
 #         ffmpeg to get date stamps from movies
-#         gif2png (optional) to convert GIF to PNG
+#         gif2apng (optional) to convert GIF to PNG
 #         mdls (optional) to get date stamps from media
 #         openssh to calculate file digests
 
