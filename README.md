@@ -22,10 +22,16 @@ import-photos [-c] [-l limit] [-p parallel] [-t] [-v] -d destroot srcroot1 srcro
 sudo apt get exiftags ffmpeg gif2png openssl
 ```
 
-## macOS
+## macOS Homebrew
 
 ```
 brew install exiftags ffmpeg gif2png openssl
+```
+
+## macOS MacPorts
+
+```
+sudo port install exif ffmpeg gif2png openssl
 ```
 
 ## RHEL / CentOS
